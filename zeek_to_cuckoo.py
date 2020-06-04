@@ -32,7 +32,7 @@ debug = 1
 api_address = "http://CUCKOO_SANDBOX_HOST:PORT"
 
 # Bearor authorization token to authentication to the cuckoo API
-bearer_token = "TOKEN GOES HERE"
+bearer_token = "AUTH_TOKEN_GOES_HERE"
 
 # List of files you do not want cuckoo to analyze
 disallowed_files = ["zip"]
@@ -80,25 +80,22 @@ def get_hash():
 # Based on a given hash, determine if the file has been analyzed before by Cuckoo,
 # If it was analyzed before, return the score that it got the previous time.
 def file_unique(sha_hash):
-    file_info = []
-    try:
-        request_results = requests.get(hash_url + sha_hash, headers=header_settings).json()
+    request_results = requests.get(hash_url + sha_hash, headers=header_settings).json()
+    if "sample" in request_results: 
         hash_task_id = request_results["sample"]["tasks"][0]
-        hash_old_score = get_score(hash_task_id)
-        file_info.append(hash_old_score)
-        file_info.append(hash_task_id)
-        return file_info
-    # If it was not analyzed before, submit the file to Cuckoo and return the task_id for further use.
-    except KeyError:
+        return hash_task_id
+    else:    
         submit_task_id = submit_file(file)
         return submit_task_id
 
 
 # Submit file to Cuckoo Sandbox for analysis
 def submit_file(file_path):
+    print("Submitting file to cuckoo: " + file_path)
     with open(file_path, "rb") as sample:
         multipart_file = {"file": (file_name, sample)}
-        retrieved_task_id = requests.post(create_url, files=multipart_file, headers=header_settings).json()["task_id"]
+        results = requests.post(create_url, files=multipart_file, headers=header_settings).json()
+        retrieved_task_id = results["task_id"]
     return retrieved_task_id
 
 
@@ -124,6 +121,7 @@ def get_score(task_id):
 
 while True:
     files = []
+    submitted_tasks = []
     for path in Path(folder_to_analyze).glob('**/*'):
         files.append(str(path.resolve()))
 
@@ -139,9 +137,11 @@ while True:
             sha256hash = get_hash()
             if debug == 1:
                 print("File has a sha256 hash of : " + sha256hash)
-            file_score, task_id = file_unique(sha256hash)
+            task_id = file_unique(sha256hash)
+            submitted_tasks.append(task_id)
             if debug == 1:
                 print("Task ID is : " + str(task_id))
-                print("File score is : " + str(file_score))
+            score = get_score(task_id)
+            print("File score is " + str(score))
     print('Files processed. Sleeping for 60 seconds')
     time.sleep(60)
